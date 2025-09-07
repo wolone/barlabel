@@ -1,13 +1,16 @@
 import { useState, useEffect } from 'react'
+import { useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+// @ts-ignore
+import Papa from 'papaparse';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { invoke } from '@tauri-apps/api/core'
-import { open } from '@tauri-apps/plugin-dialog'
+import { Progress } from '@/components/ui/progress'
 
 interface Product {
   id: number
@@ -39,6 +42,8 @@ interface SearchQuery {
 
 export default function ProductManager() {
   const [products, setProducts] = useState<Product[]>([])
+  const [selectedFileObj, setSelectedFileObj] = useState<File | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const [loading, setLoading] = useState(false)
   const [importDialogOpen, setImportDialogOpen] = useState(false)
   const [importResult, setImportResult] = useState('')
@@ -47,21 +52,20 @@ export default function ProductManager() {
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const [info, setInfo] = useState<string | null>(null)
+  const [importProgress, setImportProgress] = useState(0)
+  const [importStatus, setImportStatus] = useState('')
+  const [totalRecords, setTotalRecords] = useState(0)
+  const [processedRecords, setProcessedRecords] = useState(0)
 
   // 获取商品列表
   const fetchProducts = async () => {
     setLoading(true)
     clearMessages()
     try {
-      const response = await fetch('/api/products')
-      if (response.ok) {
-        const data = await response.json()
-        setProducts(data)
-        if (data.length === 0) {
-          setInfo('数据库中没有商品数据，请先导入CSV文件')
-        }
-      } else {
-        setError('获取商品列表失败')
+      const result = await invoke<Product[]>('search_products', { query: {} })
+      setProducts(result)
+      if (result.length === 0) {
+        setInfo('数据库中没有商品数据，请先导入CSV文件')
       }
     } catch (error) {
       console.error('获取商品列表失败:', error)
@@ -76,6 +80,7 @@ export default function ProductManager() {
     setLoading(true)
     clearMessages()
     try {
+      const { invoke } = await import('@tauri-apps/api/core');
       const result = await invoke<Product[]>('search_products', { query: searchQuery })
       setProducts(result)
       
@@ -120,52 +125,153 @@ export default function ProductManager() {
 
   // 处理文件选择
   const handleFileSelect = async () => {
-    clearMessages()
-    try {
-      // 使用Tauri的文件选择对话框
-      const filePath = await open({
-        multiple: false,
-        filters: [
-          {
-            name: 'CSV文件',
-            extensions: ['csv']
-          }
-        ]
-      })
-      
-      if (filePath) {
-        setSelectedFile(filePath as string)
-        setSuccess('文件选择成功')
-      } else {
-        setInfo('未选择文件')
+    clearMessages();
+    // 判断是否为 Tauri 环境
+  // @ts-ignore: Tauri 环境下 window.__TAURI__ 存在
+  const isTauri = Boolean((window as any).__TAURI__);
+    if (isTauri) {
+      try {
+        const dialog = await import('@tauri-apps/plugin-dialog');
+        const result = await dialog.open({
+          multiple: false,
+          filters: [
+            { name: 'CSV文件', extensions: ['csv'] }
+          ]
+        });
+        const filePath = Array.isArray(result) ? result[0] : result;
+        if (filePath) {
+          setSelectedFile(filePath as string);
+          setSuccess('文件选择成功');
+        } else {
+          setInfo('未选择文件');
+        }
+      } catch (error) {
+        console.error('选择文件失败:', error);
+        setError('选择文件失败，请重试');
       }
-    } catch (error) {
-      console.error('选择文件失败:', error)
-      setError('选择文件失败，请重试')
+    } else {
+      // Web 环境，触发 input[type=file]
+      fileInputRef.current?.click();
     }
-  }
+  };
+
+  // Web 环境下处理文件选择
+  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setSelectedFile(file.name);
+      setSelectedFileObj(file);
+      setSuccess('文件选择成功');
+    } else {
+      setSelectedFileObj(null);
+      setInfo('未选择文件');
+    }
+  };
 
   // 导入CSV文件
   const handleImport = async () => {
     if (!selectedFile) {
-      setError('请先选择CSV文件')
-      return
+      setError('请先选择CSV文件');
+      return;
     }
+    console.log('导入按钮点击，selectedFileObj:', selectedFileObj);
 
-    setLoading(true)
-    clearMessages()
-    try {
-      const result = await invoke<string>('import_csv', { filePath: selectedFile })
-      setImportResult(result)
-      setSuccess('CSV文件导入成功')
-      await fetchProducts() // 重新加载商品列表
-    } catch (error) {
-      console.error('导入失败:', error)
-      setError(`导入失败: ${error}`)
-    } finally {
-      setLoading(false)
+    // @ts-ignore: Tauri 环境下 window.__TAURI__ 存在
+    const isTauri = Boolean((window as any).__TAURI__);
+    setLoading(true);
+    clearMessages();
+    setImportProgress(0);
+    setImportStatus('正在准备导入...');
+    setTotalRecords(0);
+    setProcessedRecords(0);
+    
+    if (!isTauri) {
+      // Web模式，前端解析CSV
+      if (!selectedFileObj) {
+        setError('请先选择CSV文件');
+        setLoading(false);
+        return;
+      }
+      try {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          console.log('FileReader onload 触发');
+          const text = e.target?.result as string;
+          console.log('CSV内容:', text);
+          setImportStatus('正在解析CSV文件...');
+          setImportProgress(30);
+          
+          const result = Papa.parse(text, { header: true, skipEmptyLines: true });
+          console.log('Papa.parse结果:', result);
+          
+          setImportStatus('正在处理数据...');
+          setImportProgress(60);
+          
+          setTimeout(() => {
+            setProducts(result.data as Product[]);
+            setImportResult('CSV文件导入成功 (Web模式)');
+            setSuccess('CSV文件导入成功');
+            setImportProgress(100);
+            setImportStatus('导入完成');
+            setLoading(false);
+          }, 500);
+        };
+        reader.onerror = (e) => {
+          console.log('FileReader onerror 触发', e);
+          setError('文件读取失败');
+          setLoading(false);
+        };
+        reader.readAsText(selectedFileObj);
+      } catch (error) {
+        console.log('Web模式CSV解析异常:', error);
+        setError('Web模式CSV解析失败: ' + error);
+        setLoading(false);
+      }
+      return;
     }
-  }
+    
+    // Tauri模式，后端处理
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      setImportStatus('正在读取CSV文件...');
+      setImportProgress(20);
+      
+      // 模拟进度更新，因为后端处理是同步的
+      const progressInterval = setInterval(() => {
+        setImportProgress(prev => {
+          if (prev >= 90) {
+            clearInterval(progressInterval);
+            return 90;
+          }
+          return prev + 10;
+        });
+        
+        // 更新状态信息
+        if (importProgress < 40) {
+          setImportStatus('正在解析CSV文件...');
+        } else if (importProgress < 70) {
+          setImportStatus('正在验证数据格式...');
+        } else if (importProgress < 90) {
+          setImportStatus('正在写入数据库...');
+        }
+      }, 800);
+      
+      const result = await invoke<string>('import_csv', { filePath: selectedFile });
+      
+      clearInterval(progressInterval);
+      setImportProgress(100);
+      setImportStatus('导入完成');
+      setImportResult(result);
+      setSuccess('CSV文件导入成功');
+      await fetchProducts(); // 重新加载商品列表
+    } catch (error) {
+      console.error('导入失败:', error);
+      setError(`导入失败: ${error}`);
+      setImportStatus('导入失败');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // 导出Bartender CSV
   const handleExport = async () => {
@@ -192,6 +298,7 @@ export default function ProductManager() {
       }))
 
       // 调用后端导出功能
+      const { invoke } = await import('@tauri-apps/api/core');
       const result = await invoke<string>('export_bartender_csv', { data: csvData })
       setSuccess(result)
     } catch (error) {
@@ -263,19 +370,44 @@ export default function ProductManager() {
                   <Button onClick={handleFileSelect} variant="outline" className="w-full">
                     选择文件
                   </Button>
+                  {/* 隐藏的 input[type=file]，仅 Web 环境用 */}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".csv"
+                    style={{ display: 'none' }}
+                    onChange={handleFileInputChange}
+                  />
                   {selectedFile && (
                     <p className="text-sm text-muted-foreground mt-2">
                       已选择: {selectedFile}
                     </p>
                   )}
                 </div>
-                <Button 
-                  onClick={handleImport} 
+                <Button
+                  onClick={handleImport}
                   disabled={loading || !selectedFile}
                   className="w-full"
                 >
                   {loading ? '导入中...' : '开始导入'}
                 </Button>
+                
+                {/* 进度显示区域 */}
+                {loading && (
+                  <div className="space-y-3 mt-4">
+                    <div className="flex justify-between text-sm">
+                      <span>{importStatus}</span>
+                      <span>{importProgress}%</span>
+                    </div>
+                    <Progress value={importProgress} className="w-full" />
+                    {totalRecords > 0 && (
+                      <div className="text-xs text-muted-foreground">
+                        已处理: {processedRecords} / {totalRecords} 条记录
+                      </div>
+                    )}
+                  </div>
+                )}
+                
                 {importResult && (
                   <Alert>
                     <AlertDescription className="whitespace-pre-wrap">
