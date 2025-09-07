@@ -338,6 +338,110 @@ async fn export_bartender_csv(data: Vec<BartenderExportData>) -> Result<String, 
     Ok(format!("Bartender CSV导出成功！文件已保存为: {}", file_name))
 }
 
+#[tauri::command]
+async fn import_single_product(product: ProductData, state: tauri::State<'_, AppState>) -> Result<(), String> {
+    // 插入单个产品到数据库
+    let query = r#"
+        INSERT INTO Product (
+            Article, Description, UPC, MerchID, StyleID, Style_Desc, RootStyle, Brand, Sector, Category,
+            SubBrand, MP_A_SubBrand, Collection, Class, SubClass, MasterStyleID, MasterStyle_Desc, Choice_Code,
+            Choice_Desc, Color, EC_Color, U_ChoiceDesc, U_Form, Size, Size_1, Size_2, Material, Case, Lifecycle,
+            KeyItem, GS_Contents, FST_GLB, FST_CN, FST_HK, FST_Alt, Set_CN, Set_GLB, Set_HK, Push_CN, Push_HK,
+            MKD_GLB, MKD_CN, MKD_HK, SAS_GLB, SAS_CN, SAS_HK, CNTier_LM, CNTier_TR, CNTier_FA, CNTier_OT,
+            CNTier_EC, HKTier_BA, HKTier_FA, UPAS_Global, UPAS_CNBuy, UPAS_HKBuy, UPAS_CN, UPAS_HK, UPAS_CNFA,
+            UPAS_CNBA, UPAS_CNEC, UPAS_HKFA, UPAS_HKBA, BuyPath, US_MSRP, CN_MSRP, CN_Ticket, CN_StoreCost,
+            HK_MSRP, HK_Ticket, HK_StoreCost, FA_Bundle, BA_Bundle, RegStatus, Unblocked, PDP, Comment, DmdUnit,
+            Matchback_CN
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    "#;
+    
+    sqlx::query(query)
+        .bind(&product.article)
+        .bind(&product.description)
+        .bind(&product.upc)
+        .bind(&product.merch_id)
+        .bind(&product.style_id)
+        .bind(&product.style_desc)
+        .bind(&product.root_style)
+        .bind(&product.brand)
+        .bind(&product.sector)
+        .bind(&product.category)
+        .bind(&product.sub_brand)
+        .bind(&product.mp_a_sub_brand)
+        .bind(&product.collection)
+        .bind(&product.class)
+        .bind(&product.sub_class)
+        .bind(&product.master_style_id)
+        .bind(&product.master_style_desc)
+        .bind(&product.choice_code)
+        .bind(&product.choice_desc)
+        .bind(&product.color)
+        .bind(&product.ec_color)
+        .bind(&product.u_choice_desc)
+        .bind(&product.u_form)
+        .bind(&product.size)
+        .bind(&product.size_1)
+        .bind(&product.size_2)
+        .bind(&product.material)
+        .bind(&product.case)
+        .bind(&product.lifecycle)
+        .bind(&product.key_item)
+        .bind(&product.gs_contents)
+        .bind(&product.fst_glb)
+        .bind(&product.fst_cn)
+        .bind(&product.fst_hk)
+        .bind(&product.fst_alt)
+        .bind(&product.set_cn)
+        .bind(&product.set_glb)
+        .bind(&product.set_hk)
+        .bind(&product.push_cn)
+        .bind(&product.push_hk)
+        .bind(&product.mkd_glb)
+        .bind(&product.mkd_cn)
+        .bind(&product.mkd_hk)
+        .bind(&product.sas_glb)
+        .bind(&product.sas_cn)
+        .bind(&product.sas_hk)
+        .bind(&product.cn_tier_lm)
+        .bind(&product.cn_tier_tr)
+        .bind(&product.cn_tier_fa)
+        .bind(&product.cn_tier_ot)
+        .bind(&product.cn_tier_ec)
+        .bind(&product.hk_tier_ba)
+        .bind(&product.hk_tier_fa)
+        .bind(&product.upas_global)
+        .bind(&product.upas_cn_buy)
+        .bind(&product.upas_hk_buy)
+        .bind(&product.upas_cn)
+        .bind(&product.upas_hk)
+        .bind(&product.upas_cn_fa)
+        .bind(&product.upas_cn_ba)
+        .bind(&product.upas_cn_ec)
+        .bind(&product.upas_hk_fa)
+        .bind(&product.upas_hk_ba)
+        .bind(&product.buy_path)
+        .bind(&product.us_msrp)
+        .bind(&product.cn_msrp)
+        .bind(&product.cn_ticket)
+        .bind(&product.cn_store_cost)
+        .bind(&product.hk_msrp)
+        .bind(&product.hk_ticket)
+        .bind(&product.hk_store_cost)
+        .bind(&product.fa_bundle)
+        .bind(&product.ba_bundle)
+        .bind(&product.reg_status)
+        .bind(&product.unblocked)
+        .bind(&product.pdp)
+        .bind(&product.comment)
+        .bind(&product.dmd_unit)
+        .bind(&product.matchback_cn)
+        .execute(&state.db_pool)
+        .await
+        .map_err(|e| format!("数据库插入失败: {}", e))?;
+    
+    Ok(())
+}
+
 async fn process_csv_record(record: &StringRecord, line_number: usize, pool: &SqlitePool) -> Result<(), String> {
     // 解析CSV记录
     let product_data = parse_csv_record(record, line_number)?;
@@ -558,7 +662,7 @@ pub async fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .manage(app_state)
-        .invoke_handler(tauri::generate_handler![greet, import_csv, search_products, export_bartender_csv])
+        .invoke_handler(tauri::generate_handler![greet, import_csv, search_products, export_bartender_csv, import_single_product])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

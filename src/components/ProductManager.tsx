@@ -123,6 +123,7 @@ export default function ProductManager() {
     fetchProducts()
   }, [])
 
+
   // 处理文件选择
   const handleFileSelect = async () => {
     clearMessages();
@@ -207,9 +208,40 @@ export default function ProductManager() {
           setImportStatus('正在处理数据...');
           setImportProgress(60);
           
-          setTimeout(() => {
-            setProducts(result.data as Product[]);
-            setImportResult('CSV文件导入成功 (Web模式)');
+          setTimeout(async () => {
+            // Web模式下导入所有数据到数据库
+            const allData = result.data as Product[];
+            setTotalRecords(allData.length);
+            setImportStatus('正在导入数据到数据库...');
+            
+            // 分批处理数据以避免内存问题
+            const batchSize = 100;
+            let processedCount = 0;
+            
+            const processBatch = async (batch: Product[]) => {
+              try {
+                const { invoke } = await import('@tauri-apps/api/core');
+                for (const product of batch) {
+                  await invoke('import_single_product', { product: product });
+                  processedCount++;
+                  setProcessedRecords(processedCount);
+                  setImportProgress(Math.round((processedCount / allData.length) * 100));
+                }
+              } catch (error) {
+                console.error('批量导入失败:', error);
+                throw error;
+              }
+            };
+            
+            // 处理所有批次
+            for (let i = 0; i < allData.length; i += batchSize) {
+              const batch = allData.slice(i, i + batchSize);
+              await processBatch(batch);
+            }
+            
+            // 导入完成后重新获取数据
+            await fetchProducts();
+            setImportResult(`CSV文件导入成功 (Web模式)，共导入 ${allData.length} 条记录到数据库`);
             setSuccess('CSV文件导入成功');
             setImportProgress(100);
             setImportStatus('导入完成');
