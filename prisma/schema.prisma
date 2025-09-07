@@ -1,0 +1,99 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Product {
+  id                Int      @id @default(autoincrement())
+  Article           String?  @unique
+  Description       String?
+  UPC               String?
+  MerchID           String?
+  StyleID           String?
+  Style_Desc        String?
+  RootStyle         String?
+  Brand             String?
+  Sector            String?
+  Category          String?
+  SubBrand          String?
+  MP_A_SubBrand     String?  @map("MP&A SubBrand")
+  Collection        String?
+  Class             String?
+  SubClass          String?
+  MasterStyleID     String?
+  MasterStyle_Desc  String?
+  Choice_Code       String?
+  Choice_Desc       String?
+  Color             String?
+  EC_Color          String?
+  U_ChoiceDesc      String?
+  U_Form            String?
+  Size              String?
+  Size_1            String?
+  Size_2            String?
+  Material          String?
+  Case              String?
+  Lifecycle         String?
+  KeyItem           String?
+  GS_Contents       String?
+  FST_GLB           String?
+  FST_CN            String?
+  FST_HK            String?
+  FST_Alt           String?
+  Set_CN            String?
+  Set_GLB           String?
+  Set_HK            String?
+  Push_CN           String?
+  Push_HK           String?
+  MKD_GLB           String?
+  MKD_CN            String?
+  MKD_HK            String?
+  SAS_GLB           String?
+  SAS_CN            String?
+  SAS_HK            String?
+  CNTier_LM         String?
+  CNTier_TR         String?
+  CNTier_FA         String?
+  CNTier_OT         String?
+  CNTier_EC         String?
+  HKTier_BA         String?
+  HKTier_FA         String?
+  UPAS_Global       String?
+  UPAS_CNBuy        String?
+  UPAS_HKBuy        String?
+  UPAS_CN           String?
+  UPAS_HK           String?
+  UPAS_CNFA         String?
+  UPAS_CNBA         String?
+  UPAS_CNEC         String?
+  UPAS_HKFA         String?
+  UPAS_HKBA         String?
+  BuyPath           String?
+  US_MSRP           String?
+  CN_MSRP           String?
+  CN_Ticket         String?
+  CN_StoreCost      String?
+  HK_MSRP           String?
+  HK_Ticket         String?
+  HK_StoreCost      String?
+  FA_Bundle         String?
+  BA_Bundle         String?
+  RegStatus         String?
+  Unblocked         String?
+  PDP               String?
+  Comment           String?
+  DmdUnit           String?
+  Matchback_CN      String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@map("products")
+}
